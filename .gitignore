@@ -1,0 +1,11 @@
+out/
+logs/
+__pycache__/
+/preprocessing/DAVIS
+debug.ipynb
+butterfly/
+DAVIS/
+*.png
+video-keyframe-detector-master/keyframe_bear
+/keyframe*
+dataset/
