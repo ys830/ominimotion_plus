@@ -11,9 +11,9 @@ def main():
     #                     help='destination folder', required=True)
     # parser.add_argument('-t','--Thres', help='Threshold of the image difference', default=0.3)
 
-    parser.add_argument('-s', default='/data/yisi/mywork/omnimotion/video-keyframe-detector-master/videos/bear.mp4',
+    parser.add_argument('-s', default='/data/yisi/mywork/ominimotion_plus/video-keyframe-detector-master/videos/bear.mp4',
                         help='source file')
-    parser.add_argument('-d',  default='/data/yisi/mywork/omnimotion/video-keyframe-detector-master/keyframe_bear',
+    parser.add_argument('-d',  default='/data/yisi/mywork/ominimotion_plus/video-keyframe-detector-master/keyframe_bear',
                         help='destination folder')
     parser.add_argument('-t', help='Threshold of the image difference', default=0.3)
 

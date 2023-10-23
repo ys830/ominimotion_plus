@@ -7,9 +7,10 @@ def config_parser():
 
     # general
     parser.add_argument('--data_dir', type=str, help='the directory for the video sequence')
+    parser.add_argument('--device', default="cuda:1",type=str, help='gpu id')
     parser.add_argument('--expname', type=str, default='', help='experiment name')
     parser.add_argument('--local_rank', type=int, default=0, help='rank for distributed training')
-    parser.add_argument('--save_dir', type=str, default='out_stage1/', help='output dir')
+    parser.add_argument('--save_dir', type=str, default='out_stage2/', help='output dir')
     parser.add_argument('--ckpt_path', type=str, default='', help='checkpoint path')
     parser.add_argument('--no_reload', action='store_true', help='do not reload the weights')
     # parser.add_argument('--no_reload', default=True, help='do not reload the weights')
@@ -73,10 +74,11 @@ def config_parser():
                         help='providing the path for foreground mask file for generating trails')
 
     # log
-    parser.add_argument('--i_print', type=int, default=100, help='frequency for printing losses')
+    # parser.add_argument('--i_print', type=int, default=100, help='frequency for printing losses')
+    parser.add_argument('--i_print', type=int, default=50, help='frequency for printing losses')
     parser.add_argument('--i_img', type=int, default=500, help='frequency for writing visualizations to tensorboard')
 #     parser.add_argument('--i_weight', type=int, default=20000, help='frequency for saving ckpts')
-    parser.add_argument('--i_weight', type=int, default=10, help='frequency for saving ckpts')
+    parser.add_argument('--i_weight', type=int, default=20000, help='frequency for saving ckpts')
     parser.add_argument('--i_cache', type=int, default=20000, help='frequency for caching current flow predictions')
 
     parser.add_argument("-f", "--fff", help="a dummy argument to fool ipython", default="1")

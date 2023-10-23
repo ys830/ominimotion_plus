@@ -162,8 +162,8 @@ def demo(args):
         imgname_1 = imfile1.split("/")[-1]
         imgname_2 = imfile2.split("/")[-1]
 
-        padder = InputPadder(image1.shape)
-        image1, image2 = padder.pad(image1, image2)
+        # padder = InputPadder(image1.shape)
+        # image1, image2 = padder.pad(image1, image2)
         start_flow = os.path.join(args.flow_path, '{}_{}.npy'.format(imgname_1, imgname_2))
         flow_up = torch.from_numpy(np.load(start_flow)).float()[None].cuda()
 
@@ -172,8 +172,8 @@ def demo(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--path', default="/data/yisi/mywork/omnimotion/keyframe_bear/keyFrames", help="dataset for evaluation")
-    parser.add_argument('--flow_path', default="/data/yisi/mywork/omnimotion/keyframe_bear/raft_exhaustive", help="dataset for evaluation")
+    parser.add_argument('--path', default="/data/yisi/mywork/ominimotion_plus/dataset/keyframe_bear/color", help="dataset for evaluation")
+    parser.add_argument('--flow_path', default="/data/yisi/mywork/ominimotion_plus/dataset/keyframe_bear/raft_exhaustive", help="dataset for evaluation")
     args = parser.parse_args()
 
     demo(args)

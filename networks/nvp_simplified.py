@@ -8,15 +8,16 @@ import networks.hashsiren
 
 
 class CouplingLayer(nn.Module):
-    def __init__(self, map_st, projection, mask):
+    def __init__(self, map_st, projection, mask, device='cuda:1'):
         super().__init__()
         self.map_st = map_st
         self.projection = projection
         self.mask = mask
+        self.device = device
 
     def forward(self, F, y):
         y1 = y * self.mask #棋盘掩盖？
-        F_y1 = torch.cat([F, self.projection(y[..., self.mask.squeeze().bool()])], dim=-1)
+        F_y1 = torch.cat([F, self.projection(y[..., self.mask.squeeze().bool()])], dim=-1).to(self.device)
         st = self.map_st(F_y1) #[8,256,32,2]
         s, t = torch.split(st, split_size_or_sections=1, dim=-1)
         s = torch.clamp(s, min=-8, max=8)
@@ -96,7 +97,7 @@ class NVPSimplified(nn.Module):
             normalization=True,
             affine=False,
             activation=nn.LeakyReLU,
-            device='cuda',
+            device='cuda:1',
     ):
         super().__init__()
         self._checkpoint = False
@@ -299,7 +300,7 @@ class FixedPositionalEncoding(ProjectionLayer):
     def __init__(self, input_dims, frequency, proj_dims):
         super().__init__(input_dims, proj_dims)
         ll = frequency
-        self.sigma = np.pi * torch.pow(2, torch.linspace(0, ll - 1, ll, device='cuda')).view(1, -1)
+        self.sigma = np.pi * torch.pow(2, torch.linspace(0, ll - 1, ll, device='cuda:1')).view(1, -1)
         self.proj = nn.Sequential(
             nn.Linear(input_dims + input_dims * ll * 2, proj_dims), nn.LeakyReLU()
         )

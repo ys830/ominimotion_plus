@@ -71,13 +71,13 @@ def train(args):
                                               pin_memory=True)
 
     # get trainer
-    trainer = BaseTrainer(args)
+    trainer = BaseTrainer(args,device = args.device)
 
     start_step = trainer.step + 1
     step = start_step
     epoch = 0
     while step < args.num_iters + start_step + 1:
-        for batch in data_loader:
+        for batch in data_loader: 
             trainer.train_one_step(step, batch)
             trainer.log(writer, step)
 

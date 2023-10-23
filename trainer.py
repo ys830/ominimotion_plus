@@ -15,6 +15,7 @@ from criterion import masked_mse_loss, masked_l1_loss, compute_depth_range_loss,
 from networks.mfn import GaborNet
 from networks.nvp_simplified import NVPSimplified
 from kornia import morphology as morph
+import math
 
 
 torch.manual_seed(1234)
@@ -48,7 +49,7 @@ class BaseTrainer():
         # NVPSimplified是双射变换网络M_theta
         self.deform_mlp = NVPSimplified(n_layers=6,
                                         feature_dims=128,
-                                        hidden_size=[256, 256, 256],
+                                        hidden_size=[128,128,128],
                                         proj_dims=256,
                                         code_proj_hidden_size=[],
                                         proj_type='fixed_positional_encoding',
@@ -402,6 +403,28 @@ class BaseTrainer():
         else:
             canonical_unit_sphere_loss = torch.tensor(0.)
         return canonical_unit_sphere_loss
+    
+    def compute_coor_loss(self,xs_samples_prev_canonical,xs_samples,ids):
+        xs_samples_pred = self.get_prediction_one_way(xs_samples_prev_canonical, ids, inverse=True)
+        # loss = masked_l1_loss(xs_samples_pred, xs_samples)
+        loss = F.mse_loss(xs_samples_pred, xs_samples)
+        return loss
+
+    def compute_bio_scene_coor(self,xs_samples,ids):
+        mask_valid = (ids >= 1) * (ids < self.num_imgs - 1)
+        ids = ids[mask_valid]
+        if len(ids) == 0:
+            return torch.tensor(0.)
+        xs_samples = xs_samples[mask_valid]
+        ids_prev = ids - 1
+        ids_after = ids + 1
+        xs_samples_prev_after = self.get_predictions(torch.cat([xs_samples, xs_samples], dim=0),
+                                                     np.concatenate([ids, ids]),
+                                                     np.concatenate([ids_prev, ids_after]))
+        xs_samples_prev, xs_samples_after = torch.split(xs_samples_prev_after, split_size_or_sections=len(xs_samples), dim=0)
+        xs_samples_prev_canonical = self.get_prediction_one_way(xs_samples_prev, ids_prev)
+        xs_samples_after_canonical = self.get_prediction_one_way(xs_samples_after, ids_after)
+        return xs_samples_prev, xs_samples_after, xs_samples_prev_canonical, xs_samples_after_canonical
 
     def gradient_loss(self, pred, gt, weight=None):
         '''
@@ -435,87 +458,198 @@ class BaseTrainer():
         depth_min_th = self.args.min_depth
         depth_max_th = self.args.max_depth
         max_padding = self.args.max_padding
+        
+        keyframe = batch['is_keyframe']
+        # true为关键帧 false为非关键帧
+        true_ids1 = batch['ids1'][batch['is_keyframe']]
+        false_ids1 = batch['ids1'][~batch['is_keyframe']]
+
+        true_ids2 = batch['ids2'][batch['is_keyframe']]
+        false_ids2 = batch['ids2'][~batch['is_keyframe']]
+
+        true_px1s = batch['pts1'][batch['is_keyframe'],...].to(self.device)
+        false_px1s = batch['pts1'][~batch['is_keyframe'],...].to(self.device)
+
+        true_px2s = batch['pts2'][batch['is_keyframe'],...].to(self.device)
+        false_px2s = batch['pts2'][~batch['is_keyframe'],...].to(self.device)
+
+        true_gt_rgb1 = batch['gt_rgb1'][batch['is_keyframe'],...].to(self.device)
+        false_gt_rgb1 = batch['gt_rgb1'][~batch['is_keyframe'],...].to(self.device)
+
+        true_gt_rgb2 = batch['gt_rgb2'][batch['is_keyframe'],...].to(self.device)
+        false_gt_rgb2 = batch['gt_rgb2'][~batch['is_keyframe'],...].to(self.device)
+
+        true_weights = batch['weights'][batch['is_keyframe'],...].to(self.device)
+        false_weights = batch['weights'][~batch['is_keyframe'],...].to(self.device)
+
 
         ids1 = batch['ids1'].numpy()
         ids2 = batch['ids2'].numpy()
-        px1s = batch['pts1'].to(self.device)
-        px2s = batch['pts2'].to(self.device)
-        gt_rgb1 = batch['gt_rgb1'].to(self.device)
-        weights = batch['weights'].to(self.device)
-        num_pts = px1s.shape[1]
+        # px1s = batch['pts1'].to(self.device)
+        # px2s = batch['pts2'].to(self.device)
+        # gt_rgb1 = batch['gt_rgb1'].to(self.device)
+        # gt_rgb2 = batch['gt_rgb2'].to(self.device)
+        # weights = batch['weights'].to(self.device)    
+        num_pts = true_px1s.shape[1]
+    
 
-        # [n_pair, n_pts, n_samples, 3]
-        x1s_samples, px1s_depths_samples = self.sample_3d_pts_for_pixels(px1s, return_depth=True, det=False)
-        x2s_proj_samples, x1s_canonical_samples = self.get_predictions(x1s_samples, ids1, ids2, return_canonical=True)
-        out = self.get_blending_weights(x1s_canonical_samples)
-        blending_weights1 = out['weights']
-        alphas1 = out['alphas']
-        pred_rgb1 = out['rendered_rgbs']
+        # [n_pair, n_pts, n_samples, 3] 对关键帧进行前向的计算
+        if true_ids1.shape[0] != 0:
+            x1s_samples, px1s_depths_samples = self.sample_3d_pts_for_pixels(true_px1s, return_depth=True, det=False)
+            x2s_proj_samples, x1s_canonical_samples = self.get_predictions(x1s_samples, true_ids1, true_ids2, return_canonical=True)
+            out = self.get_blending_weights(x1s_canonical_samples)
+            blending_weights1 = out['weights']
+            alphas1 = out['alphas']
+            pred_rgb1 = out['rendered_rgbs']
 
-        mask = (x2s_proj_samples[..., -1] >= depth_min_th) * (x2s_proj_samples[..., -1] <= depth_max_th)
-        blending_weights1 = blending_weights1 * mask.float()
-        x2s_pred = torch.sum(blending_weights1.unsqueeze(-1) * x2s_proj_samples, dim=-2) #[n_imgs, n_pts, 3]
+            mask = (x2s_proj_samples[..., -1] >= depth_min_th) * (x2s_proj_samples[..., -1] <= depth_max_th)
+            blending_weights1 = blending_weights1 * mask.float()
+            x2s_pred = torch.sum(blending_weights1.unsqueeze(-1) * x2s_proj_samples, dim=-2) #[n_imgs, n_pts, 3]
 
-        # [n_imgs, n_pts, n_samples, 2]
-        px2s_proj_samples, px2s_proj_depth_samples = self.project(x2s_proj_samples, return_depth=True)
-        px2s_proj, px2s_proj_depths = self.project(x2s_pred, return_depth=True)
+            # [n_imgs, n_pts, n_samples, 2]
+            px2s_proj_samples, px2s_proj_depth_samples = self.project(x2s_proj_samples, return_depth=True)
+            px2s_proj, px2s_proj_depths = self.project(x2s_pred, return_depth=True)
 
-        mask = self.get_in_range_mask(px2s_proj, max_padding)
-        rgb_mask = self.get_in_range_mask(px1s)
+            mask = self.get_in_range_mask(px2s_proj, max_padding)
+            rgb_mask = self.get_in_range_mask(true_px1s)
 
-        if mask.sum() > 0:
-            loss_rgb = F.mse_loss(pred_rgb1[rgb_mask], gt_rgb1[rgb_mask])
-            loss_rgb_grad = self.gradient_loss(pred_rgb1[rgb_mask], gt_rgb1[rgb_mask])
+            if mask.sum() > 0:
+                # loss1(针对keyframe)
+                loss_rgb = F.mse_loss(pred_rgb1[rgb_mask], true_gt_rgb1[rgb_mask])
+                loss_rgb_grad = self.gradient_loss(pred_rgb1[rgb_mask], true_gt_rgb1[rgb_mask])
 
-            optical_flow_loss = masked_l1_loss(px2s_proj[mask], px2s[mask], weights[mask], normalize=False)
-            optical_flow_grad_loss = self.gradient_loss(px2s_proj[mask], px2s[mask], weights[mask])
+                optical_flow_loss = masked_l1_loss(px2s_proj[mask], true_px2s[mask], true_weights[mask], normalize=False)
+                optical_flow_grad_loss = self.gradient_loss(px2s_proj[mask], true_px2s[mask], true_weights[mask])
+            else:
+                loss_rgb = loss_rgb_grad = optical_flow_loss = optical_flow_grad_loss = torch.tensor(0.0, requires_grad=True)
+
+            # mapped depth should be within the predefined range
+            depth_range_loss = compute_depth_range_loss(px2s_proj_depth_samples, depth_min_th, depth_max_th)
+
+            # distortion loss to remove floaters
+            t = torch.cat([px1s_depths_samples[..., 0], px1s_depths_samples[..., 0][..., -1:]], dim=-1)
+            distortion_loss = lossfun_distortion(t, blending_weights1)
+
+            # scene flow smoothness
+            # only apply to 25% of points to reduce cost
+            scene_flow_smoothness_loss = self.compute_scene_flow_smoothness_loss(true_ids1, x1s_samples[:, :int(num_pts / 4)])
+
+            # loss for mapped points to stay within canonical sphere, L_reg
+            canonical_unit_sphere_loss = self.canonical_sphere_loss(x1s_canonical_samples)
+
+            loss1 = optical_flow_loss + \
+                w_rgb * (loss_rgb + loss_rgb_grad) + \
+                w_depth_range * depth_range_loss + \
+                w_distortion * distortion_loss + \
+                w_scene_flow_smooth * scene_flow_smoothness_loss + \
+                w_canonical_unit_sphere * canonical_unit_sphere_loss + \
+                w_flow_grad * optical_flow_grad_loss
         else:
-            loss_rgb = loss_rgb_grad = optical_flow_loss = optical_flow_grad_loss = torch.tensor(0.)
+            loss1 = torch.tensor(0.0, requires_grad=True)
 
-        # mapped depth should be within the predefined range
-        depth_range_loss = compute_depth_range_loss(px2s_proj_depth_samples, depth_min_th, depth_max_th)
 
-        # distortion loss to remove floaters
-        t = torch.cat([px1s_depths_samples[..., 0], px1s_depths_samples[..., 0][..., -1:]], dim=-1)
-        distortion_loss = lossfun_distortion(t, blending_weights1)
+        #对非关键点进行自监督
+        if (false_ids1.shape[0] != 0):
+            # [n_pair, n_pts, n_samples, 3]
+            samples, depths_samples = self.sample_3d_pts_for_pixels(torch.cat([false_px1s,false_px2s], dim=0), 
+                                                                             return_depth=True, det=False)
+            x1s_samples, x2s_samples = torch.split(samples, split_size_or_sections=len(false_px1s), dim=0)
+            px1s_depths_samples, px2s_depths_samples = torch.split(depths_samples, split_size_or_sections=len(false_px1s), dim=0)
+            rgb_mask = self.get_in_range_mask(false_px1s) #让rgb在0~255？
 
-        # scene flow smoothness
-        # only apply to 25% of points to reduce cost
-        scene_flow_smoothness_loss = self.compute_scene_flow_smoothness_loss(ids1, x1s_samples[:, :int(num_pts / 4)])
+            mask_valid = (false_ids1 >= 1) * (false_ids1 < self.num_imgs - 1)
 
-        # loss for mapped points to stay within canonical sphere, L_reg
-        canonical_unit_sphere_loss = self.canonical_sphere_loss(x1s_canonical_samples)
+            # 对false_px1s计算前后两帧
+            x1s_canonical_samples = self.get_prediction_one_way(x1s_samples, false_ids1)
+            x1s_samples_prev, x1s_samples_after, xs_samples_prev_canonical, xs_samples_after_canonical = self.compute_bio_scene_coor(x1s_samples,false_ids1)
+            out = self.get_blending_weights(x1s_canonical_samples)
+            blending_weights1 = out['weights']
+            alphas1 = out['alphas']
+            pred_rgb1 = out['rendered_rgbs']
 
-        loss = optical_flow_loss + \
-               w_rgb * (loss_rgb + loss_rgb_grad) + \
-               w_depth_range * depth_range_loss + \
-               w_distortion * distortion_loss + \
-               w_scene_flow_smooth * scene_flow_smoothness_loss + \
-               w_canonical_unit_sphere * canonical_unit_sphere_loss + \
-               w_flow_grad * optical_flow_grad_loss
+            loss_rgb1 = F.mse_loss(pred_rgb1[rgb_mask], false_gt_rgb1[rgb_mask])
+            loss_rgb1_grad = self.gradient_loss(pred_rgb1[rgb_mask], false_gt_rgb1[rgb_mask])
+
+            #对前一帧：
+            out_prev = self.get_blending_weights(xs_samples_prev_canonical)
+            blending_weights1_prev = out_prev['weights']
+            pred_rgb1_prev = out_prev['rendered_rgbs']
+            mask_prev = (x1s_samples_prev[..., -1] >= depth_min_th) * (x1s_samples_prev[..., -1] <= depth_max_th)
+            blending_weights1_prev = blending_weights1_prev * mask_prev.float()
+            x1s_pred_prev = torch.sum(blending_weights1_prev.unsqueeze(-1) * x1s_samples_prev, dim=-2) #[n_imgs, n_pts, 3]
+
+            # [n_imgs, n_pts, n_samples, 2]
+            x1s_prev, x1s_samples_prev_depth = self.project(x1s_pred_prev, return_depth=True)
+
+            mask_prev = self.get_in_range_mask(x1s_prev, max_padding)
+            rgb_mask_prev = self.get_in_range_mask(x1s_prev)
+
+            if mask_prev.sum() > 0:
+                loss_rgb1_prev = F.mse_loss(pred_rgb1_prev[rgb_mask_prev], false_gt_rgb1[mask_valid][rgb_mask_prev])
+                loss_rgb1_grad_prev = self.gradient_loss(pred_rgb1_prev[rgb_mask_prev], false_gt_rgb1[mask_valid][rgb_mask_prev])
+
+                #计算coor的loss
+                coor_loss_prev = self.compute_coor_loss(xs_samples_prev_canonical, x1s_samples[mask_valid],false_ids1[mask_valid])
+
+                loss_prev = loss_rgb1_prev + loss_rgb1_grad_prev + coor_loss_prev
+            else:
+                loss_prev = torch.tensor(0.0, requires_grad=True)
+
+            #对后一帧：
+            out_after = self.get_blending_weights(xs_samples_after_canonical)
+            blending_weights1_after = out_after['weights']
+            alphas1_after = out_after['alphas']
+            pred_rgb1_after = out_after['rendered_rgbs']
+            mask_after= (x1s_samples_after[..., -1] >= depth_min_th) * (x1s_samples_after[..., -1] <= depth_max_th)
+            blending_weights1_after = blending_weights1_after * mask_after.float()
+            x1s_pred_after = torch.sum(blending_weights1_after.unsqueeze(-1) * x1s_samples_after, dim=-2) #[n_imgs, n_pts, 3]
+
+            # [n_imgs, n_pts, n_samples, 2]
+            # x1s_samples_after_samples, x1s_samples_after_depth_samples = self.project(x1s_samples_after, return_depth=True)
+            x1s_after, x1s_samples_after_depth = self.project(x1s_pred_after, return_depth=True)
+
+            mask_after = self.get_in_range_mask(x1s_after, max_padding)
+            rgb_mask_after = self.get_in_range_mask(x1s_after)
+
+            if mask_after.sum() > 0:
+                loss_rgb1_after = F.mse_loss(pred_rgb1_after[rgb_mask_after], false_gt_rgb1[mask_valid][rgb_mask_after])
+                loss_rgb1_grad_after = self.gradient_loss(pred_rgb1_after[rgb_mask_after], false_gt_rgb1[mask_valid][rgb_mask_after])
+
+                #计算coor的loss
+                coor_loss_after = self.compute_coor_loss(xs_samples_after_canonical, x1s_samples[mask_valid],false_ids1[mask_valid])
+
+                loss_after = loss_rgb1_after + loss_rgb1_grad_after + coor_loss_after
+            else:
+                loss_after = torch.tensor(0.0, requires_grad=True)
+            
+            loss2 = loss_prev + loss_after + loss_rgb1 + loss_rgb1_grad
+        else:
+            loss2 = torch.tensor(0.0, requires_grad=True)
+        
+        loss = loss1+loss2
+
 
         if write_logs:
             self.scalars_to_log['{}/Loss'.format(log_prefix)] = loss.item()
-            self.scalars_to_log['{}/loss_flow'.format(log_prefix)] = optical_flow_loss.item()
-            self.scalars_to_log['{}/loss_rgb'.format(log_prefix)] = loss_rgb.item()
-            self.scalars_to_log['{}/loss_depth_range'.format(log_prefix)] = depth_range_loss.item()
-            self.scalars_to_log['{}/loss_distortion'.format(log_prefix)] = distortion_loss.item()
-            self.scalars_to_log['{}/loss_scene_flow_smoothness'.format(log_prefix)] = scene_flow_smoothness_loss.item()
-            self.scalars_to_log['{}/loss_canonical_unit_sphere'.format(log_prefix)] = canonical_unit_sphere_loss.item()
-            self.scalars_to_log['{}/loss_flow_gradient'.format(log_prefix)] = optical_flow_grad_loss.item()
+            self.scalars_to_log['{}/loss1'.format(log_prefix)] =loss1.item()
+            self.scalars_to_log['{}/loss2'.format(log_prefix)] =loss2.item()           
 
+        # data = {'ids1': ids1,
+        #         'ids2': ids2,
+        #         'x1s': x1s_samples, #[8,256,32,3]
+        #         'x2s_pred': x2s_pred, #[8,256,3]
+        #         'xs_canonical': x1s_canonical_samples,#[8,256,32,3]
+        #         'mask': mask, #[8,256]
+        #         'px2s_proj': px2s_proj, #[8,256,2]
+        #         'px2s_proj_depths': px2s_proj_depths, #[8,256,1]
+        #         'blending_weights': blending_weights1, #[8,256,32]
+        #         'alphas': alphas1,#[8,256,32]
+        #         't': t #[8,256,33]
+        #         }
         data = {'ids1': ids1,
-                'ids2': ids2,
-                'x1s': x1s_samples, #[8,256,32,3]
-                'x2s_pred': x2s_pred, #[8,256,3]
-                'xs_canonical': x1s_canonical_samples,#[8,256,32,3]
-                'mask': mask, #[8,256]
-                'px2s_proj': px2s_proj, #[8,256,2]
-                'px2s_proj_depths': px2s_proj_depths, #[8,256,1]
-                'blending_weights': blending_weights1, #[8,256,32]
-                'alphas': alphas1,#[8,256,32]
-                't': t #[8,256,33]
+                'ids2': ids2
                 }
+        
         if return_data:
             return loss, data
         else:
@@ -976,6 +1110,7 @@ class BaseTrainer():
                     imageio.mimwrite(os.path.join(vis_dir, '{}_corr_{:06d}.mp4'.format(self.seq_name, step)),
                                      video_correspondences,
                                      quality=8, fps=10)
+                # 这儿很慢，卡住
                 color_frames, depth_frames = self.render_color_and_depth_videos(0, self.num_imgs,
                                                                                 chunk_size=self.args.chunk_size)
                 imageio.mimwrite(os.path.join(vis_dir, '{}_depth_{:06d}.mp4'.format(self.seq_name, step)), depth_frames,
@@ -1003,6 +1138,7 @@ class BaseTrainer():
                     save_path = os.path.join(flow_save_dir, '{}_{}.npy'.format(os.path.basename(self.img_files[id1]),
                                                                                os.path.basename(self.img_files[id2])))
                     np.save(save_path, pred_optical_flows[i])
+                    #check here
                     gt_flow = np.load(os.path.join(self.seq_dir, 'raft_exhaustive',
                                                    '{}_{}.npy'.format(os.path.basename(self.img_files[id1]),
                                                                       os.path.basename(self.img_files[id2]))

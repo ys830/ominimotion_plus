@@ -141,7 +141,7 @@ class MLP(nn.Module):
                  use_pe=False,
                  pe_freq=10,
                  pe_dims=None,
-                 device='cuda',
+                 device='cuda:1',
                  act_trainable=False,
                  **kwargs):
         super(MLP, self).__init__()

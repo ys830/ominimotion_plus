@@ -1,4 +1,4 @@
-out/
+out*
 logs/
 __pycache__/
 /preprocessing/DAVIS
