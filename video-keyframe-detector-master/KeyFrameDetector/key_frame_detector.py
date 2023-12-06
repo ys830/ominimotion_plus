@@ -54,7 +54,8 @@ def keyframeDetection(source, dest, Thres, plotMetrics=False, verbose=False):
     cap.release()
     y = np.array(lstdiffMag)
     base = peakutils.baseline(y, 2)
-    indices = peakutils.indexes(y-base, Thres, min_dist=1)
+    # indices = peakutils.indexes(y-base, Thres, min_dist=1)
+    indices = peakutils.indexes(y-base, 0.1, min_dist=1)
     
 
     cnt = 1

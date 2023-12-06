@@ -132,7 +132,7 @@ def flow_to_image(flow_uv, clip_flow=None, convert_to_bgr=False):
     v = v / (rad_max + epsilon)
     return flow_uv_to_colors(u, v, convert_to_bgr)
 
-def viz(img, flo,name1,name2, base_path):
+def viz(img, flo,name1,name2,  out_path):
     img = img[0].permute(1,2,0).cpu().numpy()
     flo = flo[0].cpu().numpy()
     
@@ -147,7 +147,7 @@ def viz(img, flo,name1,name2, base_path):
     # cv2.imshow('image', img_flo[:, :, [2,1,0]]/255.0)
     # cv2.waitKey()
 
-    cv2.imwrite(os.path.join(base_path,'{}_{}.png'.format(name1, name2)),img_flo[:, :, [2,1,0]])
+    cv2.imwrite(os.path.join(out_path,'{}_{}.png'.format(name1, name2)),img_flo[:, :, [2,1,0]])
 
 
 def demo(args):
@@ -167,13 +167,14 @@ def demo(args):
         start_flow = os.path.join(args.flow_path, '{}_{}.npy'.format(imgname_1, imgname_2))
         flow_up = torch.from_numpy(np.load(start_flow)).float()[None].cuda()
 
-        viz(image1, flow_up,imgname_1,imgname_2,args.path)
+        viz(image1, flow_up,imgname_1,imgname_2,args.out_path)
  
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--path', default="/data/yisi/mywork/ominimotion_plus/dataset/keyframe_bear/color", help="dataset for evaluation")
-    parser.add_argument('--flow_path', default="/data/yisi/mywork/ominimotion_plus/dataset/keyframe_bear/raft_exhaustive", help="dataset for evaluation")
+    parser.add_argument('--path', default="/data/yisi/mywork/ominimotion_plus/dataset/bmx-trees_impt_10/color", help="dataset for evaluation")
+    parser.add_argument('--out_path', default="/data/yisi/mywork/ominimotion_plus/dataset/bmx-trees_impt_10/vis", help="dataset for evaluation")
+    parser.add_argument('--flow_path', default="/data/yisi/mywork/ominimotion_plus/dataset/bmx-trees_impt_10/raft_exhaustive", help="dataset for evaluation")
     args = parser.parse_args()
 
     demo(args)

@@ -9,8 +9,8 @@ import torch.utils.data
 import torch.distributed as dist
 from config import config_parser
 from tensorboardX import SummaryWriter
-from loaders.create_training_dataset import get_training_dataset
-from trainer import BaseTrainer
+from loaders.create_training_dataset_interpolation import get_training_dataset
+from trainer_interporation import BaseTrainer
 torch.manual_seed(1234)
 
 def synchronize():
@@ -55,7 +55,7 @@ def train(args):
         if not os.path.isfile(f):
             shutil.copy(args.config, f)
 
-    log_dir = 'logs_inter_mix_impt_10/{}_{}'.format(args.expname, seq_name)
+    log_dir = 'logs_inter/{}_{}'.format(args.expname, seq_name)
     writer = SummaryWriter(log_dir)
 
     g = torch.Generator()
@@ -83,7 +83,7 @@ def train(args):
 
             step += 1
 
-            dataset.set_max_interval(args.start_interval + step // 2000)
+            # dataset.set_max_interval(args.start_interval + step // 2000)
 
             if step >= args.num_iters + start_step + 1:
                 break

@@ -11,7 +11,7 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "args":["--config","configs/default.txt",
-            "--data_dir", "/data/yisi/mywork/ominimotion_plus/dataset/bear"],
+            "--data_dir", "/data/yisi/mywork/ominimotion_plus/dataset/bmx-trees_impt_10"],
             //debug main_preprocess
             // "args":["--data_dir", "/data/yisi/mywork/ominimotion_plus/dataset/keyframe_bear"],
             // "cwd": "/data/yisi/mywork/ominimotion_plus/preprocessing",

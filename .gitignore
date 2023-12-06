@@ -9,3 +9,5 @@ DAVIS/
 video-keyframe-detector-master/keyframe_bear
 /keyframe*
 dataset/
+logs*
+test*

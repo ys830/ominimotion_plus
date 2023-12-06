@@ -10,7 +10,7 @@ def config_parser():
     parser.add_argument('--device', default="cuda:1",type=str, help='gpu id')
     parser.add_argument('--expname', type=str, default='', help='experiment name')
     parser.add_argument('--local_rank', type=int, default=0, help='rank for distributed training')
-    parser.add_argument('--save_dir', type=str, default='out_stage2/', help='output dir')
+    parser.add_argument('--save_dir', type=str, default='test_out_stage_inter_mix_impt_10/', help='output dir')
     parser.add_argument('--ckpt_path', type=str, default='', help='checkpoint path')
     parser.add_argument('--no_reload', action='store_true', help='do not reload the weights')
     # parser.add_argument('--no_reload', default=True, help='do not reload the weights')
@@ -26,7 +26,7 @@ def config_parser():
     parser.add_argument('--dataset_types', type=str, default='flow', help='only flow is included in the current version')
     parser.add_argument('--dataset_weights', nargs='+', type=float, default=[1.], help='the weight for each dataset')
     parser.add_argument('--num_imgs', type=int, default=250, help='max number of images to train')
-    parser.add_argument('--num_pairs', type=int, default=8, help='# image pairs to sample in each batch')
+    parser.add_argument('--num_pairs', type=int, default=4, help='# image pairs to sample in each batch')
     parser.add_argument('--num_pts', type=int, default=256, help='# pts to sample from each pair of images')
 
     # lr

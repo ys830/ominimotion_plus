@@ -9,8 +9,8 @@ import torch.utils.data
 import torch.distributed as dist
 from config import config_parser
 from tensorboardX import SummaryWriter
-from loaders.create_training_dataset import get_training_dataset
-from trainer import BaseTrainer
+from loaders.create_training_dataset_inter_mix import get_training_dataset
+from trainer_inter_mix import BaseTrainer
 torch.manual_seed(1234)
 
 def synchronize():
@@ -55,7 +55,7 @@ def train(args):
         if not os.path.isfile(f):
             shutil.copy(args.config, f)
 
-    log_dir = 'logs_inter_mix_impt_10/{}_{}'.format(args.expname, seq_name)
+    log_dir = 'test_logs_inter_mix_impt_10/{}_{}'.format(args.expname, seq_name)
     writer = SummaryWriter(log_dir)
 
     g = torch.Generator()
